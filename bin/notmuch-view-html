@@ -33,7 +33,7 @@ def main(argv):
     out = run_cmd("notmuch", "show", "--format=json", "--entire-thread=false",
                   "--include-html", *getattr(args, "search-term"))
     data = json.loads(out)
-    email = data[0][0][0]
+    email = find_email(data)
 
     html_entry = find_html(email["body"])
     if not html_entry:
@@ -50,6 +50,17 @@ def main(argv):
     output = pathlib.Path("/tmp/notmuch-view-html.html")
     output.write_text(content)
     os.execvp("xdg-open", ("xdg-open", str(output)))
+
+
+def find_email(data):
+    for entry in data:
+        if isinstance(entry, list):
+            entry = find_email(entry)
+            if entry is not None:
+                return entry
+        elif isinstance(entry, dict):
+            return entry
+    return None
 
 
 def find_html(body):
