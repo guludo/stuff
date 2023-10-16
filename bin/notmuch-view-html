@@ -1,0 +1,128 @@
+#!/bin/python3
+import argparse
+import base64
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        description="""
+        Open the HTML content of an email in the browser.
+        """,
+    )
+    parser.add_argument(
+        "search-term",
+        nargs="+",
+        help="""
+        Search term(s) to be passed to notmuch-show. As there is currently no
+        support for multiple matches, they should match a single email (i.e., in
+        most case, an "id:..." search term should be used).
+        """,
+    )
+    return parser.parse_args()
+
+
+def main(argv):
+    args = parse_args(argv)
+
+    out = run_cmd("notmuch", "show", "--format=json", "--entire-thread=false",
+                  "--include-html", *getattr(args, "search-term"))
+    data = json.loads(out)
+    email = data[0][0][0]
+
+    html_entry = find_html(email["body"])
+    if not html_entry:
+        error("html content not found")
+
+    content = html_entry["content"]
+
+    # Replace cid: references with a data: URL
+    cid_map = extract_content_id_map(email["body"])
+    cid_refs = extract_content_id_refs(content)
+    cid_data_urls = build_content_id_data_urls(args, cid_map, cid_refs)
+    content = replace_cid_refs_with_content(content, cid_data_urls)
+
+    output = pathlib.Path("/tmp/notmuch-view-html.html")
+    output.write_text(content)
+    os.execvp("xdg-open", ("xdg-open", str(output)))
+
+
+def find_html(body):
+    for entry in body:
+        if entry["content-type"] == "text/html":
+            return entry
+
+        if entry["content-type"].startswith("multipart/"):
+            entry = find_html(entry["content"])
+            if entry:
+                return entry
+    else:
+        return None
+
+
+def extract_content_id_map(body):
+    ret = {}
+    for entry in body:
+        if "content-id" in entry:
+            ret[entry["content-id"]] = entry
+
+        if entry["content-type"].startswith("multipart/"):
+            ret.update(extract_content_id_map(entry["content"]))
+
+    return ret
+
+
+def extract_content_id_refs(html_text):
+    ret = set()
+    pattern = r"='cid:([^']+)'" "|" r'"cid:([^"]+)"'
+    for m in re.finditer(pattern, html_text):
+        cid = m.group(1) or m.group(2)
+        ret.add(cid)
+    return tuple(ret)
+
+
+def build_content_id_data_urls(args, cid_map, cid_refs):
+    ret = {}
+    for cid in cid_refs:
+        part = cid_map[cid]["id"]
+        cmd = ("notmuch", "show", "--format=raw", f"--part={part}",
+               *getattr(args, "search-term"))
+        content_bytes = subprocess.run(cmd, capture_output=True,
+                                       check=True).stdout
+
+        cmd = ("file", "--brief", "--mime-type", "-")
+        mime_type = subprocess.run(cmd, input=content_bytes, capture_output=True,
+                             check=True).stdout.decode()
+
+        content_b64 = base64.b64encode(content_bytes).decode()
+        ret[cid] = f"data:{mime_type};base64,{content_b64}"
+    return ret
+
+
+def replace_cid_refs_with_content(content, cid_data_urls):
+    for cid, data_url in cid_data_urls.items():
+        content = content.replace(f'="cid:{cid}"', f'="{data_url}"')
+        content = content.replace(f"='cid:{cid}'", f"='{data_url}'")
+    return content
+
+
+def run_cmd(*cmd, **kw):
+    kw.setdefault("capture_output", True)
+    kw.setdefault("check", True)
+    return subprocess.run(cmd, **kw).stdout
+
+
+def error(*k, exit_code=1, **kw):
+    k = ("error:", *k)
+    kw["file"] = sys.stderr
+    print(*k, **kw)
+    exit(exit_code)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
