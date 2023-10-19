@@ -100,6 +100,8 @@ def extract_content_id_refs(html_text):
 def build_content_id_data_urls(args, cid_map, cid_refs):
     ret = {}
     for cid in cid_refs:
+        if cid not in cid_map:
+            continue
         part = cid_map[cid]["id"]
         cmd = ("notmuch", "show", "--format=raw", f"--part={part}",
                *getattr(args, "search-term"))
