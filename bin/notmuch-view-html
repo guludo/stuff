@@ -134,7 +134,7 @@ def error(*k, exit_code=1, **kw):
     k = ("error:", *k)
     kw["file"] = sys.stderr
     print(*k, **kw)
-    exit(exit_code)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
