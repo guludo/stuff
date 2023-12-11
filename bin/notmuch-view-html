@@ -40,6 +40,7 @@ def main(argv):
         error("html content not found")
 
     content = html_entry["content"]
+    content = tweak_html(content)
 
     # Replace cid: references with a data: URL
     cid_map = extract_content_id_map(email["body"])
@@ -74,6 +75,16 @@ def find_html(body):
                 return entry
     else:
         return None
+
+
+def tweak_html(content):
+    # Hackish way of removing a possible <meta> element defining the document
+    # charset. The saved file will be encoded with UTF-8, a different charset
+    # declared in the HTML will make the browser produce wrong characters.
+    meta_pattern = r"""<meta [^>]*content=["'].*?\bcharset=.*?["'].*?>"""
+    meta_repl = r"<!-- Commented-out by notmuch-view-html: \g<0> -->"
+    content = re.sub(meta_pattern, meta_repl, content)
+    return content
 
 
 def extract_content_id_map(body):
