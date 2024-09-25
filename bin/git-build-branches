@@ -90,7 +90,8 @@ usage() {
 Rebuild branches with rebases and merges. The following topology is hard-coded
 in this script's logic:
 
-* Branch pullrequests is always based on MAIN_REV, which defaults to origin/main.
+* Branch pullrequests is always based on MAIN_REV, which defaults to origin/main
+  (or origin/master if the former is not found).
 * Branches pr/* are merged into pullrequests.
 * Branch next is always based on pullrequests.
 * Branches nx/* are merged into next.
@@ -105,7 +106,7 @@ Options:
   Do not continue the merge or rebase after rerere auto resolved conflicts.
 
 --main MAIN_REV
-  Use MAIN_REV instead of origin/main.
+  Use MAIN_REV instead of origin/main or origin/master.
 
 --help, -h:
   Display this help message and exit.
@@ -113,7 +114,7 @@ Options:
 }
 
 RERERE_CONTINUE=yes
-MAIN_REV=origin/main
+MAIN_REV=
 
 enabled=$(git config get --type=bool --default=false build-branches.enable)
 if [[ "$enabled" != "true" ]]; then
@@ -152,6 +153,17 @@ while (($# > 0)); do
     esac
     shift
 done
+
+if [[ -z $MAIN_REV ]]; then
+    if git show-ref -q --verify refs/remotes/origin/main; then
+        MAIN_REV=origin/main
+    elif git show-ref -q --verify refs/remotes/origin/master; then
+        MAIN_REV=origin/master
+    else
+        echo "Missing main branch. Please use --main." >&2
+        exit 1
+    fi
+fi
 
 if has_stale_merges "$MAIN_REV..pullrequests" "pr/*" \
         || ! git_is_ancestor "$MAIN_REV" pullrequests; then
