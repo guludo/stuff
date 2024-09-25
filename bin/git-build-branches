@@ -121,7 +121,7 @@ if [[ "$enabled" != "true" ]]; then
     exit 1
 fi
 
-args_from_config=$(git config get build-branches.args)
+args_from_config=$(git config get --default= build-branches.args)
 set -- $args_from_config "$@"
 
 while (($# > 0)); do
