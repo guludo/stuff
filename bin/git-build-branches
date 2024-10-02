@@ -198,8 +198,15 @@ new_baseline=$(find_next_baseline next)
 
 for b in $(list_branches "nx/*"); do
     cur_baseline=$(find_next_baseline "$b")
-    echo -e "\e[1mRebasing $cur_baseline..$b onto the new baseline ($new_baseline)\e[0m"
-    git_rebase -r --onto "$new_baseline" "$cur_baseline" "$b"
+    # Because we use --no-ff in the rebase command to avoid missing any commit,
+    # we need to check if the baseline is already correct to avoid always
+    # recreating the history.
+    if [[ "$new_baseline" == "$new_baseline" ]]; then
+        echo -e "\e[1mBaseline for $b is already correct\e[0m"
+    else
+        echo -e "\e[1mRebasing $cur_baseline..$b onto the new baseline ($new_baseline)\e[0m"
+        git_rebase --no-ff -r --onto "$new_baseline" "$cur_baseline" "$b"
+    fi
     echo -e "\e[1mMerging $b into next\e[0m"
     git checkout next
     git_merge "$b"
