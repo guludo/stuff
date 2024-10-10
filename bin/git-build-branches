@@ -53,7 +53,16 @@ git_rebase() {
 find_next_baseline() {
     local ret
     ret=$(
-        git log --format='%H %B' --grep '^NEXT-BASELINE$' -z --first-parent "$1~100".."$1" | \
+        local rev_or_range=$(
+            if git rev-parse --verify -q "$1~100"; then
+                echo "$1~100..$1"
+            else
+                # The repository has very few commits. Use the full range.
+                echo "$1"
+            fi
+        )
+
+        git log --format='%H %B' --grep '^NEXT-BASELINE$' -z --first-parent "$rev_or_range" | \
         while read -d '' log; do
             if [[ "$log" =~ ^[0-9a-f]{40}\ NEXT-BASELINE$ ]]; then
                 echo ${log%% *}
