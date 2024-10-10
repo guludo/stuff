@@ -187,13 +187,6 @@ for b in $(list_branches "pr/*"); do
     echo
 done
 
-stale_merges=$(
-    for h in $(git log --merges --format=%H  pullrequests..next); do
-        if [[ -z "$(git branch --list --points-at=$h^2 "nx/*")" ]]; then
-            echo $h
-        fi
-    done
-)
 if has_stale_merges pullrequests..next "nx/*" \
         || ! git_is_ancestor pullrequests next; then
     git checkout -B next pullrequests
