@@ -88,6 +88,26 @@ has_stale_merges() {
     return 1
 }
 
+branch_needs_recreation() {
+    local branch=$1
+    local base=$2
+    local subbranches_pattern=$3
+
+    if ! git show-ref -q --verify "refs/heads/$branch"; then
+        return 0
+    fi
+
+    if has_stale_merges "$base..$branch" "$subbranches_pattern"; then
+        return 0
+    fi
+
+    if ! git_is_ancestor "$base" "$branch"; then
+        return 0
+    fi
+
+    return 1
+}
+
 usage() {
     echo "Usage: $0 [--no-rerere-continue] [-h | --help]"
 
@@ -174,8 +194,7 @@ if [[ -z $MAIN_REV ]]; then
     fi
 fi
 
-if has_stale_merges "$MAIN_REV..pullrequests" "pr/*" \
-        || ! git_is_ancestor "$MAIN_REV" pullrequests; then
+if branch_needs_recreation pullrequests "$MAIN_REV" "pr/*"; then
     git checkout -B pullrequests "$MAIN_REV"
 else
     git checkout pullrequests
@@ -187,8 +206,7 @@ for b in $(list_branches "pr/*"); do
     echo
 done
 
-if has_stale_merges pullrequests..next "nx/*" \
-        || ! git_is_ancestor pullrequests next; then
+if branch_needs_recreation next pullrequests "nx/*"; then
     git checkout -B next pullrequests
     git commit -m "NEXT-BASELINE" --allow-empty
     git branch -f next-baseline
