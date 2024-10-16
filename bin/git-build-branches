@@ -54,7 +54,7 @@ find_next_baseline() {
     local ret
     ret=$(
         local rev_or_range=$(
-            if git rev-parse --verify -q "$1~100"; then
+            if git rev-parse --verify -q "$1~100" >/dev/null; then
                 echo "$1~100..$1"
             else
                 # The repository has very few commits. Use the full range.
