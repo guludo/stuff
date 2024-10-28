@@ -221,7 +221,7 @@ for b in $(list_branches "nx/*"); do
     # Because we use --no-ff in the rebase command to avoid missing any commit,
     # we need to check if the baseline is already correct to avoid always
     # recreating the history.
-    if [[ "$new_baseline" == "$new_baseline" ]]; then
+    if [[ "$new_baseline" == "$cur_baseline" ]]; then
         echo -e "\e[1mBaseline for $b is already correct\e[0m"
     else
         echo -e "\e[1mRebasing $cur_baseline..$b onto the new baseline ($new_baseline)\e[0m"
