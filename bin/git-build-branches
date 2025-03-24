@@ -3,10 +3,78 @@
 # This flag is extremely important. Each step in this script assumes that
 # previous steps were succesful.
 set -e
+set -o pipefail
+
+branch_deps()
+{
+    local branch=$1
+    local -a dep
+
+    read -ra dep <<<"$(git config get build-branches-dep."$branch".dep)"
+
+    printf "%s\n" "${dep[@]}"
+}
+
+dep_sort_branches()
+{
+    local -a branches
+    local -A visited
+    local -a stack
+    local stack_len
+    local deps
+    local dep
+    local branch
+
+    mapfile -t branches
+
+    stack=()
+    stack_len=0
+
+    for branch in "${branches[@]}"; do
+        visited[$branch]=no
+    done
+
+    for branch in "${branches[@]}"; do
+        if [[ ${visited[$branch]} != yes ]]; then
+            stack[stack_len++]="0$branch"
+        fi
+
+        while (( stack_len )); do
+            if [[ ${stack[stack_len - 1]} == 0* ]]; then
+                stack[stack_len - 1]=${stack[stack_len - 1]/#0/1}
+                mapfile -t deps <<<"$(branch_deps "${stack[stack_len - 1]#1}")"
+                for dep in "${deps[@]}"; do
+                    # Push to the stack only if $dep is a branch in $branches
+                    # (hence the -v) and has not been visited yet.
+                    if [[ -v visited[$dep] ]] && [[ ${visited[$dep]} != yes ]]; then
+                        stack[stack_len++]="0$dep"
+                        visited[$dep]=yes
+                    fi
+                done
+            else
+                # Output now that dependencies are already out.
+                echo "${stack[--stack_len]#1}"
+            fi
+        done
+    done
+}
+
+declare -A LIST_BRANCHES_CACHE
 
 list_branches()
 {
-    git branch --list --format='%(refname:short)' "$@"
+    local key
+
+    key="$*"
+
+    if ! [[ -v LIST_BRANCHES_CACHE[$key] ]]; then
+        LIST_BRANCHES_CACHE[$key]=$(
+            git branch --list --format='%(refname:short)' "$@" \
+                | dep_sort_branches
+        )
+    fi
+
+    echo "${LIST_BRANCHES_CACHE[$key]}"
 }
 
 git_is_ancestor() {
@@ -88,6 +156,38 @@ has_stale_merges() {
     return 1
 }
 
+merged_subbranches_satisfy_dependencies()
+{
+    local branch=$1
+    local base=$2
+    local subbranches_pattern=$3
+    local -a subbranches
+    local sorted_subbranches
+    local -a merged_subbranches
+    local sorted_merged_subbranches
+
+    mapfile -t subbranches <<<"$(list_branches "$subbranches_pattern")"
+    mapfile -t merged_subbranches <<<"$(git branch --list --format='%(refname:short)' \
+                                                   --merged="$branch" "${subbranches[@]}")"
+
+    sorted_subbranches=$(
+        printf "%s\n" "${subbranches[@]:0:${#merged_subbranches[@]}}" \
+            | sort
+    )
+    sorted_merged_subbranches=$(
+        printf "%s\n" "${merged_subbranches[@]}" | sort
+    )
+
+    if [[ "$sorted_subbranches" == "$sorted_merged_subbranches" ]]; then
+        return 0
+    fi
+
+    # If the initial set of the same size as the merged subbranches does not
+    # match the merged ones, that means that there might be a missing dependency
+    # for the next branches to be merged.
+    return 1
+}
+
 branch_needs_recreation() {
     local branch=$1
     local base=$2
@@ -102,6 +202,10 @@ branch_needs_recreation() {
     fi
 
     if ! git_is_ancestor "$base" "$branch"; then
+        return 0
+    fi
+
+    if ! merged_subbranches_satisfy_dependencies "$branch" "$base" "$subbranches_pattern"; then
         return 0
     fi
 
