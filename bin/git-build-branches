@@ -36,18 +36,33 @@ git_merge() {
 
 git_rebase() {
     local err
-    if git rebase --rerere-autoupdate "$@"; then
-        return
-    else
-        err=$?
-        if [[ -z "$(git diff)" ]] && [[ $RERERE_CONTINUE == yes ]]; then
-            # If the diff is empty, it's likely that rerere mechanism was able
-            # to solve conflicts automatically, let's try continuing the rebase.
-            git rebase --continue
+    local rebase_cmd
+    local head
+    local last_err_head
+
+    rebase_cmd=(git rebase --rerere-autoupdate "$@")
+    last_err_head=
+
+    while true; do
+        if "${rebase_cmd[@]}"; then
             return
+        else
+            err=$?
+            head=$(git rev-parse HEAD)
+            if [[ -z "$(git diff)" ]] && [[ $RERERE_CONTINUE == yes ]] \
+                && [[ $head != "$last_err_head" ]]; then
+                # If the diff is empty, it's likely that rerere mechanism was able
+                # to solve conflicts automatically. So, we try to simply
+                # continue the rebase. The [[ $head != "$last_err_head" ]] check
+                # prevents us from an infinite loop when failing to continue the
+                # rebase.
+                rebase_cmd=(git rebase --continue)
+                last_err_head=$head
+                continue
+            fi
+            return $err
         fi
-        return $err
-    fi
+    done
 }
 
 find_next_baseline() {
