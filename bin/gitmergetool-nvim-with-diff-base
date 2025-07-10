@@ -1,0 +1,139 @@
+#!/bin/bash
+#
+# This is a git mergetool that opens nvim with the conflicted file on the left
+# window and then two vertically stacked windows on the right, like below:
+#
+#     ┌────────────┬────────────┐
+#     │            │    base    │
+#     │            │     vs     │
+#     │ conflicted │   remote   │
+#     │    file    ├────────────┤
+#     │            │    base    │
+#     │            │     vs     │
+#     │            │    local   │
+#     └────────────┴────────────┘
+#
+# Both "base vs remote" and "base vs local" buffers show a diff between a
+# special "base" file against special "remote" and "local" files, respectively.
+#
+# Those files are called "special" because they are not the original base, local
+# and remote files fed by git-mergetool, but they are actually transformed in a
+# way that the diffs are shown only for the conflicting parts of the original
+# files.
+#
+# In order to use this tool, you need the following section in your git
+# configuration:
+#
+#     [mergetool "gitmergetool-nvim-with-diff-base"]
+#     cmd = gitmergetool-nvim-with-diff-base "$LOCAL" "$BASE" "$REMOTE" "$MERGED"
+#     prompt = true
+#     trustExitCode = true
+#
+# Also, if you want this tool to be the default mergetool, you can also do:
+#
+#     git config --global merge.tool gitmergetool-nvim-with-diff-base
+#
+# , assuming that gitmergetool-nvim-with-diff-base reachable through PATH.
+set -eu -o pipefail
+
+GIT_DIR=$(git rev-parse --git-dir)
+OUR_DIR="$GIT_DIR/gitmergetool-nvim-with-diff-base"
+mkdir -p "$OUR_DIR"
+
+cleanup() {
+    rm -rf "$OUR_DIR"
+}
+
+trap cleanup EXIT
+
+LOCAL=$1
+BASE=$2
+REMOTE=$3
+MERGED=$4
+
+if [[ -z $BASE ]]; then
+    BASE=/dev/null
+fi
+
+
+marker_size=$(( 1 + $(
+    # Find all occurrences of stuff that would look like a conflict marker and
+    # possible confuse us. Then take the maximum length found.
+    sed -n 's/^\(<\+\||\+\|=\+\|>\+\).*/\1/p' "$LOCAL" "$BASE" "$REMOTE" \
+    | wc -L
+)))
+
+if merged_content=$(git merge-file --diff3 --marker-size="$marker_size" --stdout "$LOCAL" "$BASE" "$REMOTE"); then
+    :
+else
+    # git-merge-file will exit with zero for clean merges and a value between 1
+    # and 127 when conflicts arise.
+    if (( $? > 127 )); then
+        echo "Unknown failure from git-merge-file. Aborting..." >&2
+        exit 1
+    fi
+fi
+
+sed_local_start="^<\\{$marker_size\\}"
+sed_base_start="^|\\{$marker_size\\}"
+sed_remote_start="^=\\{$marker_size\\}"
+sed_remote_end="^>\\{$marker_size\\}"
+
+echo -n "$merged_content" \
+    | sed "/$sed_local_start/d; /$sed_base_start/,/$sed_remote_end/d" \
+    > "$OUR_DIR/merged-prefer-local"
+
+echo -n "$merged_content" \
+    | sed "/$sed_local_start/,/$sed_base_start/d; /$sed_remote_start/,/$sed_remote_end/d" \
+    > "$OUR_DIR/merged-prefer-base"
+
+echo -n "$merged_content" \
+    | sed "/$sed_local_start/,/$sed_remote_start/d; /$sed_remote_end/d" \
+    > "$OUR_DIR/merged-prefer-remote"
+
+# Initially, I used +"vertical terminal git -P diff ..." in the call to nvim,
+# however this bug (https://github.com/neovim/neovim/issues/26543) bites us
+# sometimes. Let's just save the diffs somewhere and open them as a buffer.
+rm -f "$OUR_DIR/base-vs-local.diff"
+git -C "$OUR_DIR" diff -U10 --no-index \
+        -- "merged-prefer-base" "merged-prefer-local" \
+        > "$OUR_DIR/base-vs-local.diff" || true
+
+rm -f "$OUR_DIR/base-vs-remote.diff"
+git -C "$OUR_DIR" diff -U10 --no-index \
+        -- "merged-prefer-base" "merged-prefer-remote" \
+        > "$OUR_DIR/base-vs-remote.diff" || true
+
+while true; do
+    nvim "$MERGED" \
+        +'syntax match Error /^[<|=>]\{7,\}\( .*\|$\)/' \
+        +"/<<<<<<<" \
+        +'set splitright' \
+        +"vs +view $OUR_DIR/base-vs-local.diff" \
+        +"split +view $OUR_DIR/base-vs-remote.diff"
+
+    # The option mergetool.<tool>.prompt=true, does not work exactly the way we
+    # want. To have more control, let's prompt ourselves.
+    if grep -q -e '^\(<<<<<<<\|=======\|>>>>>>>\)' "$MERGED"; then
+        read -r -p "Conflict markers still found. Type q to abort, p to save anyway, or any other key to retry working on the file. "
+        case ${REPLY,,} in
+            q)
+                exit 1
+                ;;
+            p)
+                exit 0
+                ;;
+        esac
+    else
+        REPLY=
+        while [[ ${REPLY,,} != [yn] ]]; do
+            read -r -p "Should we consider conflicts to be resolved? (y|n) "
+        done
+
+        if [[ ${REPLY,,} = y ]]; then
+            exit 0
+        else
+            exit 1
+        fi
+    fi
+done
