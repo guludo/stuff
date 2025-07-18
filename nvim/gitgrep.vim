@@ -27,7 +27,16 @@ function GitGrep(search_str)
         return
     endif
 
-    execute "terminal git -P grep " join(l:options, " ") "'" .. l:search_str .. "'"
+    let l:gitgrep_cmd = "git -P grep " .. join(l:options, " ") .. " '" .. l:search_str .. "'"
+
+    " Let's avoid using terminal until
+    " https://github.com/neovim/neovim/issues/26543 gets fixed.
+    " execute "terminal " .. l:gitgrep_cmd
+    enew
+    setlocal buftype=nofile
+    setlocal bufhidden=hide
+    setlocal noswapfile
+    call setline(1, systemlist(gitgrep_cmd))
 
     if l:is_cword
         let l:vim_search_pattern = "\\<" .. l:search_str .. "\\>"
