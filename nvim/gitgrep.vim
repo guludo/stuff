@@ -10,7 +10,7 @@
 let g:GitGrepBufferInfo = {}
 
 function GitGrep(search_str)
-    let l:options = ["-W"]
+    let l:options = ["-W", "-n"]
     let l:search_str = a:search_str
     let l:is_cword = 0
     let l:original_buffer = bufnr()
@@ -55,6 +55,7 @@ function GitGrep(search_str)
     execute "nmap <buffer> q :call GitGrepQuit()<CR>"
     nmap <buffer> <C-]> :call GitGrep("")<CR>
     nmap <buffer> <C-W><C-]> :vs<Bar>call GitGrep("")<CR>
+    nmap <buffer> gf :call GitGrepGoToFile()<CR>
 endfunction
 
 function GitGrepQuit()
@@ -64,6 +65,16 @@ function GitGrepQuit()
     bd #
     let @/ = l:buffer_info["original_search_pattern"]
     unlet g:GitGrepBufferInfo[l:buffer_number]
+endfunction
+
+function GitGrepGoToFile()
+    let l:buffer_number = bufnr()
+    let l:buffer_info = g:GitGrepBufferInfo[l:buffer_number]
+    let l:line = getline(".")
+    let l:m = matchlist(l:line, '^\([^-:]\+\)\(-\d\+-\|:\d\+:\)')
+    call GitGrepQuit()
+    execute "edit " fnameescape(l:m[1])
+    call cursor(slice(l:m[2], 1, -1), 0)
 endfunction
 
 command -nargs=* GitGrep :call GitGrep('<args>')
