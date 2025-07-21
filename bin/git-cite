@@ -1,0 +1,47 @@
+#!/bin/bash
+
+USAGE="git cite [-c] <commit>..."
+
+LONG_USAGE="\
+Output a \"citation\" line for each commit passed as argument.
+
+This is equivalent of using git-log to show each commit using the format
+'%h (\"%s\")'.
+
+The option -c can be used to copy the output to the clipboard. You can also
+use 'git config --global cite.copy true' to have -c being the default.
+"
+
+. "$(git --exec-path)/git-sh-setup"
+
+set -eu -o pipefail
+
+commits=()
+copy=$(git config --type=bool --default=false cite.copy)
+
+while (( $# > 0 )); do
+    case $1 in
+    -c)
+        copy=true
+        ;;
+    -*)
+        echo "error: unknown option: $1" >&2
+        exit 1
+        ;;
+    *)
+        commits+=($1)
+        ;;
+    esac
+    shift
+done
+
+out=$(git log --format='%h ("%s")' --no-walk=unsorted ${commits[@]} --)
+
+echo "$out"
+
+if [[ $copy == true ]]; then
+    if ! echo "$out" | wl-copy; then
+        echo "error: failed to copy output to clipboard via wl-copy" >&2
+        exit 1
+    fi
+fi
