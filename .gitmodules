@@ -1,0 +1,3 @@
+[submodule "nvim/pack/start/vim-linux-coding-style"]
+	path = nvim/pack/start/vim-linux-coding-style
+	url = git@github.com:guludo/vim-linux-coding-style.git
