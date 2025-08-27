@@ -104,13 +104,16 @@ git -C "$OUR_DIR" diff -U10 --no-index \
         -- "merged-prefer-base" "merged-prefer-remote" \
         > "$OUR_DIR/base-vs-remote.diff" || true
 
+echo "\
+syntax match Error /^[<|=>]\{7,\}\( .*\|$\)/
+/<<<<<<<
+set splitright
+vs +view $OUR_DIR/base-vs-local.diff
+split +view $OUR_DIR/base-vs-remote.diff
+" > "$OUR_DIR/script.nvim"
+
 while true; do
-    nvim "$MERGED" \
-        +'syntax match Error /^[<|=>]\{7,\}\( .*\|$\)/' \
-        +"/<<<<<<<" \
-        +'set splitright' \
-        +"vs +view $OUR_DIR/base-vs-local.diff" \
-        +"split +view $OUR_DIR/base-vs-remote.diff"
+    nvim "$MERGED" "+source $OUR_DIR/script.nvim"
 
     # The option mergetool.<tool>.prompt=true, does not work exactly the way we
     # want. To have more control, let's prompt ourselves.
