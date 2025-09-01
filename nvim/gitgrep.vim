@@ -12,6 +12,8 @@
 " - GitGrep: This is the command that is called by the Ctrl-Space mapping. The
 "   arguments are passed as a single pattern to git-grep. You can call with no
 "   arguments to use the word under the cursor.
+"
+" - GitGrepQuickfix: Similar to GitGrep, but start a quickfix with the results.
 
 let g:GitGrepBufferInfo = {}
 
@@ -83,7 +85,29 @@ function GitGrepGoToFile()
     call cursor(slice(l:m[2], 1, -1), 0)
 endfunction
 
+function GitGrepQuickfix(search_str)
+    let l:options = ["-n", "--column"]
+    let l:search_str = a:search_str
+    let l:is_cword = 0
+
+    if empty(l:search_str)
+        let l:is_cword = 1
+        let l:search_str = expand('<cword>')
+        let l:options += ["-w", "-F"]
+    endif
+
+    if empty(l:search_str)
+        echoerr "Empty search string"
+        return
+    endif
+
+    let l:gitgrep_cmd = "git -P grep " .. join(l:options, " ") .. " '" .. l:search_str .. "'"
+
+    call setqflist([], ' ', {'lines': systemlist(gitgrep_cmd)})
+endfunction
+
 command -nargs=* GitGrep :call GitGrep('<args>')
+command -nargs=* GitGrepQuickfix :call GitGrepQuickfix('<args>')
 
 nmap <C-Space> :GitGrep<CR>
 nmap <C-W><C-Space> :vs<Bar>GitGrep<CR>
