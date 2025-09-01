@@ -6,6 +6,12 @@
 " - It is possible to use this recursively, meaning that Ctrl-Space in the
 "   git-grep buffer will invoke git-grep again, "stacking" another git-grep
 "   buffer on top of the existing one.
+"
+" Available commands:
+"
+" - GitGrep: This is the command that is called by the Ctrl-Space mapping. The
+"   arguments are passed as a single pattern to git-grep. You can call with no
+"   arguments to use the word under the cursor.
 
 let g:GitGrepBufferInfo = {}
 
