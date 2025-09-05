@@ -1,0 +1,66 @@
+#!/bin/bash
+
+USAGE="git shallow-push <repository> [[<src>] <dst>] [[--] <git-push-extra-args>]"
+
+LONG_USAGE="\
+Create a root commit containing the tree from <src> (which defaults to HEAD) and
+push that commit to <dst>. The syntax <src>:<dst> is also supported, for
+familiarity with git-push (only if <src> does not contain \":\").
+
+If <dst> is omitted, the default is to use the current branch name plus the
+suffix \"-shallow\".
+
+Any extra argument to be forwarded to git-push needs to come AFTER positional
+arguments.
+"
+
+. "$(git --exec-path)/git-sh-setup"
+
+set -e
+
+positionals_count=0
+for arg in "$@"; do
+    if [[ $arg == -* ]]; then
+        break
+    fi
+    ((++positionals_count))
+done
+
+if ((positionals_count == 1)); then
+    repo=$1
+    src=HEAD
+    dst=refs/heads/$(git branch --show-current)-shallow
+    if [[ $dst == refs/heads/-shallow ]]; then
+        die "looks like you are on a detached head, please pass destination ref explicitly"
+    fi
+elif ((positionals_count == 2)); then
+    repo=$1
+    if [[ $2 =~ ^([^:]+):(.+)$ ]]; then
+        src=${BASH_REMATCH[1]}
+        dst=${BASH_REMATCH[2]}
+    else
+        src=HEAD
+        dst=$2
+    fi
+elif ((positionals_count == 3)); then
+    repo=$1
+    src=$2
+    dst=$3
+else
+    usage
+fi
+
+shift $positionals_count
+if [[ $1 == -- ]]; then
+    shift
+fi
+
+commit_message_format='Shallow commit of "%s"
+
+This is a shallow commit of
+%H,
+created by using the same tree but no parents.
+'
+commit_message=$(git log -n1 --format="$commit_message_format")
+shallow_commit=$(git commit-tree "$src^{tree}" -m "$commit_message")
+exec git push "$repo" "$shallow_commit:$dst" "$@"
