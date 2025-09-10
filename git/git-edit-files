@@ -1,0 +1,31 @@
+#!/bin/bash
+
+USAGE='git edit-files [--range] <rev...>'
+
+LONG_USAGE='\
+Call the editor on the existing files touched by one or more commit (default
+to HEAD of no <rev...> is passed).
+'
+
+SUBDIRECTORY_OK=1
+
+. "$(git --exec-path)/git-sh-setup"
+
+set -eu -o pipefail
+
+caller_dir=$PWD
+cd "$(git rev-parse --show-toplevel)"
+
+if (( $# == 0 )); then
+    revs=("HEAD")
+else
+    revs=("$@")
+fi
+
+mapfile -t files < <(
+    for rev in "${revs[@]}"; do
+        git log -n1 --format= --name-only "$rev"
+    done | sort -u
+)
+
+git_editor "${files[@]}"
