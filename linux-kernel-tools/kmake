@@ -1,0 +1,57 @@
+#!/bin/bash
+set -eu -o pipefail
+
+usage() {
+    echo -n "\
+Usage: kmake [options] [--] [<make_args>]
+
+This is a tool for the lazy ones that want to build the linux kernel in a
+separate build tree without having to type too much. This is basically an alias
+for:
+
+    make O=build -j\$(nproc) <make_args>
+"
+}
+
+is_linux_kernel() {
+    local lines
+
+    if ! [[ -r README ]]; then
+        return 1
+    fi
+
+    mapfile -n 2 -t lines <README
+    if ! [[ "${lines[@]}" == 'Linux kernel ============' ]]; then
+        return 1
+    fi
+}
+
+err() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+while (( $# > 0 )); do
+    case $1 in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            break;
+    esac
+done
+
+if ! is_linux_kernel; then
+    err 'This does not appear to be a linux kernel.' >&2
+fi
+
+if ! [[ -f build/.config ]]; then
+    err 'Missing build/.config file.'
+fi
+
+exec make O=build -j$(nproc) "$@"
