@@ -28,4 +28,14 @@ mapfile -t files < <(
     done | sort -u
 )
 
-git_editor "${files[@]}"
+editor=$(git var GIT_EDITOR)
+
+if [[ $editor == nvim ]]; then
+    exec "$editor" "${files[@]}" \
+            +'vnew' \
+            +'read !git show -W' \
+            +'set filetype=git buftype=nofile'
+            +'file git-show'
+else
+    exec "$editor" "${files[@]}"
+fi
