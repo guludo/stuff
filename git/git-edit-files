@@ -13,28 +13,41 @@ SUBDIRECTORY_OK=1
 
 set -eu -o pipefail
 
+parse_args() {
+    if (( $# == 0 )); then
+        revs=("HEAD")
+    else
+        revs=("$@")
+    fi
+}
+
+collect_files() {
+    mapfile -t files < <(
+        for rev in "${revs[@]}"; do
+            git log -n1 --format= --name-only "$rev"
+        done | sort -u
+    )
+}
+
+get_editor() {
+    editor=$(git var GIT_EDITOR)
+}
+
+call_editor() {
+    if [[ $editor == nvim ]]; then
+        exec "$editor" "${files[@]}" \
+                +'vnew' \
+                +'read !git show -W' \
+                +'set filetype=git buftype=nofile' \
+                +'file git-show'
+    else
+        exec "$editor" "${files[@]}"
+    fi
+}
+
 cd "$(git rev-parse --show-toplevel)"
 
-if (( $# == 0 )); then
-    revs=("HEAD")
-else
-    revs=("$@")
-fi
-
-mapfile -t files < <(
-    for rev in "${revs[@]}"; do
-        git log -n1 --format= --name-only "$rev"
-    done | sort -u
-)
-
-editor=$(git var GIT_EDITOR)
-
-if [[ $editor == nvim ]]; then
-    exec "$editor" "${files[@]}" \
-            +'vnew' \
-            +'read !git show -W' \
-            +'set filetype=git buftype=nofile' \
-            +'file git-show'
-else
-    exec "$editor" "${files[@]}"
-fi
+parse_args
+collect_files
+get_editor
+call_editor
