@@ -33,7 +33,7 @@ if [[ $editor == nvim ]]; then
     exec "$editor" "${files[@]}" \
             +'vnew' \
             +'read !git show -W' \
-            +'set filetype=git buftype=nofile'
+            +'set filetype=git buftype=nofile' \
             +'file git-show'
 else
     exec "$editor" "${files[@]}"
