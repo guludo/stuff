@@ -104,6 +104,8 @@ function GitGrepQuickfix(search_str)
     let l:gitgrep_cmd = "git -P grep " .. join(l:options, " ") .. " '" .. l:search_str .. "'"
 
     call setqflist([], ' ', {'lines': systemlist(gitgrep_cmd)})
+    copen
+    cfirst
 endfunction
 
 command -nargs=* GitGrep :call GitGrep('<args>')
