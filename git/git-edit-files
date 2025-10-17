@@ -93,7 +93,9 @@ menu_prompt() {
     done
 }
 
-amend_commit() {
+commit() {
+    local commit_cmd
+
     if ! [[ -t 0 ]] || ! [[ -t 1 ]]; then
         return
     fi
@@ -107,10 +109,29 @@ amend_commit() {
         return
     fi
 
-    menu_prompt 'Amend commit?' 'y: yes' 'n: no'
-    if [[ $REPLY == n ]]; then
-        return
-    fi
+    menu_prompt 'Commit?' \
+                'a: amend' \
+                's: squash' \
+                'f: fixup' \
+                'n: do not commit'
+    case "$REPLY" in
+        a)
+            commit_cmd=("git" "commit" "--amend")
+            ;;
+        s)
+            commit_cmd=("git" "commit" "--edit" "--squash=${revs[0]}")
+            ;;
+        f)
+            commit_cmd=("git" "commit" "--edit" "--fixup=${revs[0]}")
+            ;;
+        n)
+            return
+            ;;
+        *)
+            echo "error: unknown option: $REPLY" >&2
+            exit 1
+            ;;
+    esac
 
     while true; do
         git add -p || true
@@ -148,9 +169,9 @@ amend_commit() {
             "+'set filetype=git buftype=nofile'"
             "+'file git diff --cached'"
         )
-        GIT_EDITOR="$editor ${nvim_commands[*]}" git commit --amend
+        GIT_EDITOR="$editor ${nvim_commands[*]}" "${commit_cmd[@]}"
     else
-        git commit --amend
+        "${commit_cmd[@]}"
     fi
 }
 
@@ -160,4 +181,4 @@ parse_args
 collect_files
 get_editor
 call_editor
-amend_commit
+commit
