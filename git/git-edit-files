@@ -34,14 +34,106 @@ get_editor() {
 }
 
 call_editor() {
+    if git diff --quiet -- "${files[@]}"; then
+        files_had_diff_before=no
+    else
+        files_had_diff_before=yes
+    fi
+
     if [[ $editor == nvim ]]; then
-        exec "$editor" "${files[@]}" \
+        "$editor" "${files[@]}" \
                 +'vnew' \
                 +'read !git show -W' \
                 +'set filetype=git buftype=nofile' \
                 +'file git-show'
     else
-        exec "$editor" "${files[@]}"
+        "$editor" "${files[@]}"
+    fi
+
+    if [[ $? -ne 0 ]]; then
+        # Editor returned with error; bail out.
+        exit $?
+    fi
+
+    if git diff --quiet -- "${files[@]}"; then
+        files_have_diff_after=no
+    else
+        files_have_diff_after=yes
+    fi
+}
+
+yes_no_prompt() {
+    local prompt=$1
+
+    REPLY=
+    while [[ ${REPLY,,} != [yn] ]]; do
+        read -rp "$prompt (y|n) "
+    done
+
+    if [[ ${REPLY,,} == y ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+amend_commit() {
+    if ! [[ -t 0 ]] || ! [[ -t 1 ]]; then
+        return
+    fi
+
+    if [[ $files_had_diff_before == yes ]]; then
+        echo "info: Files had non-empty diff before the editor. Not trying to amend commit." >&2
+        return
+    fi
+
+    if [[ $files_have_diff_after != yes ]]; then
+        return
+    fi
+
+    if ! yes_no_prompt "Amend commit?"; then
+        return
+    fi
+
+    while true; do
+        git add -p || true
+
+        if git diff --quiet -- "${files[@]}"; then
+            break
+        fi
+
+        REPLY=
+        while [[ ${REPLY,,} != [cgq] ]]; do
+            read -rp "Files still contain unstaged diff. What to do? (g=call git add again, c=commit anyway, q=quit) "
+        done
+
+        case "$REPLY" in
+            g)
+                continue
+                ;;
+            c)
+                break
+                ;;
+            q)
+                exit 1
+                ;;
+            *)
+                echo "error: Unknown reply" >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ $editor == nvim ]]; then
+        local nvim_commands=(
+            '+vnew'
+            "'+read !git diff --cached -W'"
+            "+'set filetype=git buftype=nofile'"
+            "+'file git diff --cached'"
+        )
+        GIT_EDITOR="$editor ${nvim_commands[*]}" git commit --amend
+    else
+        git commit --amend
     fi
 }
 
@@ -51,3 +143,4 @@ parse_args
 collect_files
 get_editor
 call_editor
+amend_commit
