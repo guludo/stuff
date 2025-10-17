@@ -62,19 +62,35 @@ call_editor() {
     fi
 }
 
-yes_no_prompt() {
+menu_prompt() {
     local prompt=$1
+    shift  # Rest of arguments are options in the format "<char>: <text>"
+    local option
+    local option_chars
 
-    REPLY=
-    while [[ ${REPLY,,} != [yn] ]]; do
-        read -rp "$prompt (y|n) "
+    for option; do
+        option_chars+="${option:0:1}|"
     done
 
-    if [[ ${REPLY,,} == y ]]; then
-        return 0
-    else
-        return 1
-    fi
+    option_chars="(${option_chars}h:help)"
+
+    REPLY=
+    while true; do
+        read -rp "$prompt $option_chars "
+
+        if [[ $REPLY == h ]]; then
+            for option; do
+                echo "$option" >&2
+            done
+            continue
+        fi
+
+        for option; do
+            if [[ ${option:0:1} == $REPLY ]]; then
+                return
+            fi
+        done
+    done
 }
 
 amend_commit() {
@@ -91,7 +107,8 @@ amend_commit() {
         return
     fi
 
-    if ! yes_no_prompt "Amend commit?"; then
+    menu_prompt 'Amend commit?' 'y: yes' 'n: no'
+    if [[ $REPLY == n ]]; then
         return
     fi
 
@@ -102,10 +119,10 @@ amend_commit() {
             break
         fi
 
-        REPLY=
-        while [[ ${REPLY,,} != [cgq] ]]; do
-            read -rp "Files still contain unstaged diff. What to do? (g=call git add again, c=commit anyway, q=quit) "
-        done
+        menu_prompt 'Fiiles still contain unstaged diff. What to do?' \
+                    'g: call git add again' \
+                    'c: commit anyway' \
+                    'q: quit'
 
         case "$REPLY" in
             g)
