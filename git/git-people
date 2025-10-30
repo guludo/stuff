@@ -1,0 +1,235 @@
+#!/bin/bash
+USAGE="[<op>] <args...>"
+
+LONG_USAGE="\
+Find people involved in the development of this repository.
+
+Operations (<op>):
+
+    --search
+        Search the database filtering by <args...>.  Note that the database must
+        be already properly initialized (with the operation --update).
+
+    --update
+        Initialize or update the database of people.  The database is stored in
+        the git-dir of the current worktree.  This command performs a git log
+        and extract people (name and email) from authors, committers and
+        trailers in commit messages.
+
+    --from-git-log, -l
+        Do a process similar to --update, but only output results instead of
+        storing them into the database. You can pass options to git-log via
+        <args...>, which is useful for limiting the search.
+
+Common options:
+
+    --copy, -c
+        Copy the output of the command to the clipboard.  You can make this the
+        default with 'git config people.copy true'.
+"
+
+. "$(git --exec-path)/git-sh-setup"
+
+set -eu -o pipefail
+
+git_dir=$(git rev-parse --git-dir)
+db_dir="$git_dir/git-people"
+
+positional_args=()
+arg_operation=
+arg_copy=unset
+
+parse_args() {
+    if (( $# > 0 )); then
+        case "$1" in
+            --update)
+                arg_operation=update_db
+                ;;
+            --search)
+                arg_operation=search_db
+                ;;
+            -l | --from-git-log)
+                arg_operation=search_git_log
+                ;;
+        esac
+
+        if [[ -n $arg_operation ]]; then
+            shift
+        fi
+    fi
+
+    if [[ -z $arg_operation ]]; then
+            arg_operation=search_db
+    fi
+
+    while (( $# > 0 )); do
+        case "$1" in
+            -c | --copy)
+                arg_copy=true
+                ;;
+            -C | --no-copy)
+                arg_copy=false
+                ;;
+            --)
+                shift
+                positional_args+=("$@")
+                break
+                ;;
+            -*)
+                die "Unkonwn option: $1"
+                ;;
+            *)
+                positional_args+=("$1")
+                ;;
+        esac
+        shift
+    done
+}
+
+collect_emails_from_git_log() { # [--authors] [--committers] [--trailers] --log-args <log_args...>
+    local format=''
+    local src=''
+    local log_args=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            --authors)
+                src+='a'
+                ;;
+            --committers)
+                src+='c'
+                ;;
+            --trailers)
+                src+='t'
+                ;;
+            --log-args)
+                shift
+                log_args=("$@")
+                break
+                ;;
+            *)
+                die "BUG: Unhandled collect_emails_from_git_log arg: $1"
+        esac
+        shift
+    done
+
+    if [[ -z $src ]]; then
+        src='act'
+    fi
+
+    case "$src" in
+        *a*)
+            format+='A: %an <%ae>%n'
+            ;;
+        *c*)
+            format+='C: %cn <%ce>%n'
+            ;;
+        *t*)
+            format+='%(trailers)%n'
+            ;;
+    esac
+
+    git log --format="$format" "${log_args[@]}" \
+        | sed -n 's/^.*:\s*\([[:alpha:]][[:alpha:][:space:]]\+<[^@]\+@[^\.>]\+\.[^\.>][^>]*>\).*/\1/p' \
+        | sed 's/\s\+/ /g' \
+        | sort -u
+}
+
+search_git_log() {
+    if (( ${#positional_args[@]} == 0 )); then
+        if [[ -t 0 && -t 2 ]]; then
+            REPLY=
+            while [[ $REPLY != [yn] ]]; do
+                echo 'You did not specify any git-log arguments.' >&2
+                echo 'This means collecting emails from *everything* reachable from HEAD!' >&2
+                read -rp 'Do you want to continue? (y|n) '
+            done
+
+            if [[ $REPLY == n ]]; then
+                exit 1
+            fi
+        fi
+    fi
+
+    collect_emails_from_git_log --log-args "${positional_args[@]}"
+}
+
+update_db() {
+    # TODO: Allow passing log args via CLI and git config.
+    local default_log_args=('--since=5 years ago')
+
+    mkdir -p "$db_dir"
+    collect_emails_from_git_log --authors --log-args "${default_log_args[@]}" > "$db_dir/authors"
+    collect_emails_from_git_log --committers --log-args "${default_log_args[@]}" > "$db_dir/committers"
+    collect_emails_from_git_log --trailers --log-args "${default_log_args[@]}" > "$db_dir/trailers"
+    cat "$db_dir/authors" "$db_dir/committers" "$db_dir/trailers" | sort -u > "$db_dir/all"
+}
+
+search_db() {
+    local arg
+    local grep_pattern=''
+    local lines
+    local f
+    local has_matches
+
+    if ! [[ -e "$db_dir" ]]; then
+        die $'Database people does not exist for this worktree yet.\nPlease use --update to populate it.'
+    fi
+
+    for arg in "${positional_args[@]}"; do
+        grep_pattern+=".*$arg"
+    done
+
+    if [[ -n $grep_pattern ]]; then
+        has_matches=no
+
+        for f in "$db_dir/authors" "$db_dir/committers" "$db_dir/trailers"; do
+            mapfile -t lines < <(grep -i -m 2 -e "$grep_pattern" "$f")
+
+            if (( ${#lines[@]} > 0 )); then
+                has_matches=yes
+            fi
+
+            if (( ${#lines[@]} == 1 )); then
+                # A single match was found! Output it and return.
+                echo "${lines[0]}"
+                return
+            fi
+        done
+
+        if [[ $has_matches == yes ]]; then
+            grep -i -e "$grep_pattern" "$db_dir/all"
+        fi
+    else
+        cat "$db_dir/all"
+    fi
+}
+
+run_operation() {
+    case "$arg_operation" in
+        update_db) update_db ;;
+        search_db) search_db ;;
+        search_git_log) search_git_log ;;
+        *) die "BUG: Unknown operation: $arg_operation"
+    esac
+}
+
+main() {
+    local out
+
+    parse_args "$@"
+
+    if [[ $arg_copy == unset ]]; then
+        arg_copy=$(git config --type=bool --default=false people.copy)
+    fi
+
+    if [[ $arg_copy == true ]]; then
+        out=$(run_operation)
+        echo -n "$out" | wl-copy
+        echo "$out"
+    else
+        run_operation
+    fi
+}
+
+main "$@"
