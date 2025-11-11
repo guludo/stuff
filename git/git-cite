@@ -1,6 +1,6 @@
 #!/bin/bash
 
-USAGE="git cite [-c] <commit>..."
+USAGE="git cite [OPTIONS] <commit>..."
 
 LONG_USAGE="\
 Output a \"citation\" line for each commit passed as argument.
@@ -8,8 +8,16 @@ Output a \"citation\" line for each commit passed as argument.
 This is equivalent of using git-log to show each commit using the format
 '%h (\"%s\")'.
 
-The option -c can be used to copy the output to the clipboard. You can also
-use 'git config --global cite.copy true' to have -c being the default.
+OPTIONS:
+
+  -c
+    The option -c can be used to copy the output to the clipboard. You can also
+    use 'git config --global cite.copy true' to have -c being the default.
+
+  --abbrev
+    Option similar to git-log(1)'s --abbrev, specifying the number of chars for
+    abbreviating SHA-1 hashes for commits. You can specify a default value with
+    git configuration cite.abbrev.
 "
 
 . "$(git --exec-path)/git-sh-setup"
@@ -18,11 +26,20 @@ set -eu -o pipefail
 
 commits=()
 copy=$(git config --type=bool --default=false cite.copy)
+abbrev=$(git config --type=int --default=12 cite.abbrev)
 
 while (( $# > 0 )); do
     case $1 in
     -c)
         copy=true
+        ;;
+    --abbrev)
+        shift
+        if (( $# == 0 )); then
+            echo "error: option --abbrev requires an argument" >&2
+            exit 1
+        fi
+        abbrev=$1
         ;;
     -*)
         echo "error: unknown option: $1" >&2
@@ -35,7 +52,7 @@ while (( $# > 0 )); do
     shift
 done
 
-out=$(git log --format='%h ("%s")' --no-walk=unsorted ${commits[@]} --)
+out=$(git log --abbrev="$abbrev" --format='%h ("%s")' --no-walk=unsorted ${commits[@]} --)
 
 echo "$out"
 
