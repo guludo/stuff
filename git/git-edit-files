@@ -177,7 +177,7 @@ commit() {
 
 cd "$(git rev-parse --show-toplevel)"
 
-parse_args
+parse_args "$@"
 collect_files
 get_editor
 call_editor
