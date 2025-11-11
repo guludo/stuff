@@ -6,7 +6,6 @@ set formatoptions=oqnj
 set conceallevel=2
 set splitright
 set foldlevelstart=99
-set nowrapscan
 
 autocmd FileType rst setlocal formatoptions=oqnj
 
