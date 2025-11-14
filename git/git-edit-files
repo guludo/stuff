@@ -96,6 +96,10 @@ menu_prompt() {
 commit() {
     local commit_cmd
 
+    if (( ${#revs[@]} != 1 )); then
+        return
+    fi
+
     if ! [[ -t 0 ]] || ! [[ -t 1 ]]; then
         return
     fi
