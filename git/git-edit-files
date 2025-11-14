@@ -43,7 +43,7 @@ call_editor() {
     if [[ $editor == nvim ]]; then
         "$editor" "${files[@]}" \
                 +'vnew' \
-                +'read !git show -W' \
+                +'read !git show -W '"${revs[@]}" \
                 +'set filetype=git buftype=nofile' \
                 +'file git-show'
     else
