@@ -29,6 +29,14 @@ collect_files() {
     )
 }
 
+rev_is_head() {
+    local shas
+
+    mapfile -t shas < <(git rev-parse "$1" "HEAD")
+
+    (( ${#shas[@]} == 2 )) && [[ ${shas[0]} == ${shas[1]} ]]
+}
+
 get_editor() {
     editor=$(git var GIT_EDITOR)
 }
@@ -95,6 +103,7 @@ menu_prompt() {
 
 commit() {
     local commit_cmd
+    local prompt_options
 
     if (( ${#revs[@]} != 1 )); then
         return
@@ -113,11 +122,19 @@ commit() {
         return
     fi
 
-    menu_prompt 'Commit?' \
-                'a: amend' \
-                's: squash' \
-                'f: fixup' \
-                'n: do not commit'
+    prompt_options=()
+
+    if rev_is_head "${revs[0]}"; then
+        prompt_options+=('a: amend')
+    fi
+
+    prompt_options+=(
+        's: squash'
+        'f: fixup'
+        'n: do not commit'
+    )
+
+    menu_prompt 'Commit?' "${prompt_options[@]}"
     case "$REPLY" in
         a)
             commit_cmd=("git" "commit" "--amend")
