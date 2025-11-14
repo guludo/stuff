@@ -15,9 +15,28 @@ set -eu -o pipefail
 
 parse_args() {
     if (( $# == 0 )); then
-        revs=("HEAD")
+        revs=()
     else
         revs=("$@")
+    fi
+}
+
+find_non_squash_rev() {
+    local out
+
+    if (( ${#revs[@]} > 0 )); then
+        return
+    fi
+
+    # Unsetting pipefail in the subshell below because it appears git-log return
+    # with failure if the piping is cut short.
+    out=$(set +o pipefail; git log -n100 --format='%H %s' | grep -m1 -v '^[0-9a-f]\+ \(squash\|amend\|fixup\)!')
+
+    if [[ $out =~ ^([0-9a-f]+)\ .+$ ]]; then
+        revs=("${BASH_REMATCH[1]}")
+    else
+        echo "error: Failed to find a non-squash rev, please pass revision explicitly" >&2
+        exit 1
     fi
 }
 
@@ -199,6 +218,7 @@ commit() {
 cd "$(git rev-parse --show-toplevel)"
 
 parse_args "$@"
+find_non_squash_rev
 collect_files
 get_editor
 call_editor
