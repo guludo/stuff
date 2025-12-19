@@ -65,8 +65,4 @@ if ! is_linux_kernel; then
     err 'This does not appear to be a linux kernel.' >&2
 fi
 
-if ! [[ -f "${KMAKE_BUILD_DIR}/.config" ]]; then
-    err "Missing \"${KMAKE_BUILD_DIR}/.config\" file."
-fi
-
 exec make O="$KMAKE_BUILD_DIR" -j$(nproc) "$@"
