@@ -65,4 +65,5 @@ if ! is_linux_kernel; then
     err 'This does not appear to be a linux kernel.' >&2
 fi
 
+mkdir -p "$KMAKE_BUILD_DIR"
 exec make O="$KMAKE_BUILD_DIR" -j$(nproc) "$@"
