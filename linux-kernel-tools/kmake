@@ -16,6 +16,9 @@ The following environment variables can be used to customize the behavior:
     KMAKE_BUILD_DIR
         Use a build directory different from \"build\". The path must be
         relative to the toplevel directory.
+
+You can also set them in a .kmakerc file at the toplevel directory, which is
+sourced as a bash script by kmake.
 "
 }
 
@@ -51,6 +54,10 @@ while (( $# > 0 )); do
             break;
     esac
 done
+
+if [[ -f .kmakerc ]]; then
+    source .kmakerc
+fi
 
 KMAKE_BUILD_DIR=${KMAKE_BUILD_DIR:-build}
 
