@@ -22,6 +22,10 @@ Operations (<op>):
         <args...>, which is useful for limiting the search.
 
 Common options:
+    --mailmap, --no-mailmap
+        Use (or don't) git-check-mailmap when processing contacts.  The default
+        is the value of git config people.mailmap, which, in turn, defaults to
+        true.
 
     --copy, -c
         Copy the output of the command to the clipboard.  You can make this the
@@ -38,6 +42,7 @@ db_dir="$git_dir/git-people"
 positional_args=()
 arg_operation=
 arg_copy=unset
+arg_mailmap=unset
 
 parse_args() {
     if (( $# > 0 )); then
@@ -69,6 +74,12 @@ parse_args() {
                 ;;
             -C | --no-copy)
                 arg_copy=false
+                ;;
+            --mailmap)
+                arg_mailmap=true
+                ;;
+            --no-mailmap)
+                arg_mailmap=false
                 ;;
             --)
                 shift
@@ -135,6 +146,20 @@ collect_emails_from_git_log() { # [--authors] [--committers] [--trailers] --log-
         | sort -u
 }
 
+pipe_contacts() { # [<path>]
+    local git_checkmailmap=(git check-mailmap --stdin)
+
+    if [[ $arg_mailmap == true ]]; then
+        if [[ -v 1 ]]; then
+            cat "$1" | "${git_checkmailmap[@]}"
+        else
+            "${git_checkmailmap[@]}"
+        fi | sort -u
+    else
+        cat "$@"
+    fi
+}
+
 search_git_log() {
     if (( ${#positional_args[@]} == 0 )); then
         if [[ -t 0 && -t 2 ]]; then
@@ -151,7 +176,7 @@ search_git_log() {
         fi
     fi
 
-    collect_emails_from_git_log --log-args "${positional_args[@]}"
+    collect_emails_from_git_log --log-args "${positional_args[@]}" | pipe_contacts
 }
 
 update_db() {
@@ -184,7 +209,7 @@ search_db() {
         has_matches=no
 
         for f in "$db_dir/authors" "$db_dir/committers" "$db_dir/trailers"; do
-            mapfile -t lines < <(grep -i -m 2 -e "$grep_pattern" "$f")
+            mapfile -t lines < <(pipe_contacts "$f" | grep -i -m 2 -e "$grep_pattern")
 
             if (( ${#lines[@]} > 0 )); then
                 has_matches=yes
@@ -198,10 +223,10 @@ search_db() {
         done
 
         if [[ $has_matches == yes ]]; then
-            grep -i -e "$grep_pattern" "$db_dir/all"
+            pipe_contacts "$db_dir/all" | grep -i -e "$grep_pattern"
         fi
     else
-        cat "$db_dir/all"
+        pipe_contacts "$db_dir/all"
     fi
 }
 
@@ -221,6 +246,10 @@ main() {
 
     if [[ $arg_copy == unset ]]; then
         arg_copy=$(git config --type=bool --default=false people.copy)
+    fi
+
+    if [[ $arg_mailmap == unset ]]; then
+        arg_mailmap=$(git config --type=bool --default=true people.mailmap)
     fi
 
     if [[ $arg_copy == true ]]; then
