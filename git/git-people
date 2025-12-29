@@ -131,13 +131,13 @@ collect_emails_from_git_log() { # [--authors] [--committers] [--trailers] --log-
     case "$src" in
         *a*)
             format+='A: %an <%ae>%n'
-            ;;
+            ;;&
         *c*)
             format+='C: %cn <%ce>%n'
-            ;;
+            ;;&
         *t*)
             format+='%(trailers)%n'
-            ;;
+            ;;&
     esac
 
     git log --format="$format" "${log_args[@]}" \
